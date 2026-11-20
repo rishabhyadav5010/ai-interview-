@@ -1,69 +1,124 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState } from 'react';
+import { Navbar } from '@/components/Navbar';
+import { InterviewSetup } from '@/components/InterviewSetup';
+import { InterviewRoom } from '@/components/InterviewRoom';
+import { Scorecard } from '@/components/Scorecard';
+import { 
+  InterviewConfig, 
+  InterviewQuestion, 
+  CandidateAnswer, 
+  InterviewScorecard 
+} from '@/types/interview';
+import { getInterviewQuestions } from '@/lib/interviewData';
+import { Loader2, Sparkles, Brain } from 'lucide-react';
 
 export default function Home() {
+  const [view, setView] = useState<'setup' | 'interview' | 'evaluating' | 'scorecard'>('setup');
+  const [config, setConfig] = useState<InterviewConfig | null>(null);
+  const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
+  const [scorecard, setScorecard] = useState<InterviewScorecard | null>(null);
+
+  // Start interview from setup screen
+  const handleStartInterview = (newConfig: InterviewConfig) => {
+    setConfig(newConfig);
+    const generatedQuestions = getInterviewQuestions(newConfig);
+    setQuestions(generatedQuestions);
+    setView('interview');
+  };
+
+  // When interview finishes, evaluate answers via API
+  const handleFinishInterview = async (answers: CandidateAnswer[]) => {
+    setView('evaluating');
+
+    try {
+      const res = await fetch('/api/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config,
+          answers
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error('Evaluation request failed');
+      }
+
+      const data: InterviewScorecard = await res.json();
+      setScorecard(data);
+      setView('scorecard');
+    } catch (err) {
+      console.error('Evaluation failed:', err);
+      alert('Could not complete automated scoring. Showing session overview.');
+      setView('setup');
+    }
+  };
+
+  // Reset to setup
+  const handleReset = () => {
+    setView('setup');
+    setScorecard(null);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
+      
+      {/* Navbar (Persistent on Setup and Scorecard, hidden in Live Room for immersion) */}
+      {view !== 'interview' && (
+        <Navbar 
+          onReset={view !== 'setup' ? handleReset : undefined} 
+          statusText={view === 'evaluating' ? 'Scoring Answers...' : undefined}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      )}
+
+      {/* Main Dynamic View */}
+      <main className="flex-1">
+        {view === 'setup' && (
+          <InterviewSetup onStart={handleStartInterview} />
+        )}
+
+        {view === 'interview' && config && (
+          <InterviewRoom
+            config={config}
+            questions={questions}
+            onFinish={handleFinishInterview}
+            onExit={handleReset}
+          />
+        )}
+
+        {view === 'evaluating' && (
+          <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mb-6 shadow-xl shadow-cyan-500/10">
+              <Brain className="w-8 h-8 text-cyan-400 animate-pulse" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+              <span>AI Hiring Lead is Analyzing Your Interview</span>
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+            </h2>
+            <p className="text-sm text-slate-400 max-w-md">
+              Evaluating speech clarity, technical depth, problem-solving structure, and preparing a personalized scorecard...
+            </p>
+          </div>
+        )}
+
+        {view === 'scorecard' && scorecard && config && (
+          <Scorecard
+            scorecard={scorecard}
+            config={config}
+            onRetake={handleReset}
+          />
+        )}
       </main>
+
+      {/* Subtle Footer on Setup & Scorecard */}
+      {view !== 'interview' && (
+        <footer className="border-t border-slate-900 py-6 text-center text-xs text-slate-500">
+          <p>© 2026 PrepAI · Built for collaborative AI interview preparation.</p>
+        </footer>
+      )}
+
     </div>
   );
 }
